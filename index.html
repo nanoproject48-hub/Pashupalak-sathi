@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15803d">
+<title>Pashupalak Sathi</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{--g:#15803d;--dark:#0f172a;--grey:#64748b;--red:#b91c1c;--blue:#1e40af;--bg:#f1f5f9}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);color:var(--dark)}
+  .wrap{max-width:520px;margin:0 auto;min-height:100vh}
+  .center{display:flex;flex-direction:column;justify-content:center;min-height:100vh;padding:24px}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:12px}
+  .sum{background:#f0fdf4;border-color:#86efac}
+  h1{margin:0;font-size:26px;color:var(--g);text-align:center}
+  .sub{color:var(--grey);font-size:14px;text-align:center;margin:4px 0 20px}
+  input{width:100%;padding:12px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:15px;margin-bottom:10px}
+  button{width:100%;padding:12px;border:0;border-radius:10px;font-size:15px;color:#fff;background:var(--g);margin-top:6px}
+  button.dark{background:var(--dark)} button.ghost{background:#e2e8f0;color:var(--dark)}
+  button:disabled{opacity:.5}
+  .gbtn{background:#fff;color:#1f2937;border:1px solid #cbd5e1;display:flex;align-items:center;justify-content:center;gap:10px}
+  .or{text-align:center;color:var(--grey);font-size:12px;margin:12px 0 6px}
+  .msg{font-size:13px;margin:4px 0 8px;white-space:pre-wrap}
+  .err{color:var(--red)} .info{color:var(--blue)}
+  .link{color:var(--blue);font-size:13px;text-align:center;margin-top:14px;cursor:pointer}
+  .head{background:var(--g);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:5}
+  .head .t{flex:1}.head b{font-size:17px;display:block}.head small{color:#dcfce7;font-size:12px}
+  .head button{width:auto;background:transparent;padding:8px 10px;margin:0;font-size:18px}
+  .tabs{display:flex;gap:8px;padding:10px 12px 4px}
+  .tabs button{margin:0;background:#e2e8f0;color:var(--dark)} .tabs button.on{background:var(--g);color:#fff}
+  .body{padding:4px 12px 28px}
+  .small{font-size:12px;color:var(--grey)}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .big{font-size:28px;font-weight:700;color:var(--g)}
+  .nav{display:flex;align-items:center;padding:6px 0 10px}
+  .nav button{width:52px;background:transparent;color:var(--dark);font-size:18px}
+  .nav div{flex:1;text-align:center;font-size:18px;font-weight:700}
+  .ent{padding-top:8px}
+  .amt{color:var(--g);font-weight:700}
+  .scroll{overflow-x:auto;background:#fff;border-radius:8px}
+  table{border-collapse:collapse;font-size:11px}
+  td,th{padding:6px;text-align:center;min-width:52px;border:1px solid #f1f5f9}
+  th,td.h{background:#dcfce7;font-weight:700}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="module">
+import React,{useState,useEffect,useRef} from 'https://esm.sh/react@18.3.1';
+import {createRoot} from 'https://esm.sh/react-dom@18.3.1/client';
+import htm from 'https://esm.sh/htm@3.1.1';
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {getAuth,onAuthStateChanged,signOut,GoogleAuthProvider,signInWithPopup,signInWithRedirect,
+  getRedirectResult,signInWithEmailAndPassword,createUserWithEmailAndPassword,sendPasswordResetEmail}
+  from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+import {getFirestore,doc,getDoc,setDoc,collection,query,where,getDocs,serverTimestamp}
+  from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+
+const html = htm.bind(React.createElement);
+
+// Same Firebase project as Dairy Sathi (web API key is public, not a secret)
+const app = initializeApp({
+  apiKey: 'AIzaSyBOhzhUTF1Sd5nORw3NYNQRVUwQnP-5Kv0',
+  authDomain: 'dairysathi-a793e.firebaseapp.com',
+  projectId: 'dairysathi-a793e'
+});
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const f2=v=>Number(v||0).toFixed(2), f1=v=>Number(v||0).toFixed(1);
+const safeId=s=>(s||'').replace(/[^A-Za-z0-9_\-]/g,'');
+const shiftOrd=s=>/evening/i.test(s||'')?1:0;
+
+// ---------- local cache (offline) ----------
+const LS={
+  get(k){try{return JSON.parse(localStorage.getItem('ps_'+k)||'null')}catch(e){return null}},
+  set(k,v){try{localStorage.setItem('ps_'+k,JSON.stringify(v))}catch(e){}},
+  clear(){try{Object.keys(localStorage).filter(k=>k.startsWith('ps_')).forEach(k=>localStorage.removeItem(k))}catch(e){}}
+};
+
+// ---------- rate calculator (same as Dairy Sathi RateCalculator.java) ----------
+const tenth=v=>Math.round(v*10)/10;
+const steps=(a,b)=>Math.round(Math.abs(tenth(a)-tenth(b))*10);
+function adj(value,base,lowB,baseB,lowStep,baseStep,highStep){
+  value=tenth(value); base=tenth(base);
+  if(value<base){
+    const baseStop=Math.max(lowB+0.1,lowB);
+    const baseTarget=Math.max(value,baseStop);
+    const baseSteps=Math.max(0,steps(base,baseTarget));
+    let lowSteps=0;
+    if(value<=lowB) lowSteps=Math.max(0,steps(lowB+0.1,value));
+    return -(baseSteps*baseStep+lowSteps*lowStep);
+  }
+  if(value>base) return Math.max(0,steps(base+0.1,value))*highStep;
+  return 0;
+}
+function calcRate(r,fat,snf){
+  let x=r.base_rate;
+  x+=adj(fat,r.base_fat,3.0,3.5,r.low_fat,r.fat_deduct,r.high_fat);
+  x+=adj(snf,r.base_snf,8.0,8.5,r.low_snf,r.snf_deduct,r.high_snf);
+  return Math.round(x*100)/100;
+}
+
+function authMsg(e){
+  const c=(e&&e.code)||'';
+  if(c.includes('email-already-in-use'))return 'Ye email pehle se registered hai. Sign In karein.';
+  if(c.includes('user-not-found'))return 'Ye email registered nahi hai. Pehle naya account banayein.';
+  if(c.includes('wrong-password')||c.includes('invalid-credential')||c.includes('invalid-login'))return 'Email ya password galat hai.';
+  if(c.includes('weak-password'))return 'Password kam se kam 6 characters ka rakhein.';
+  if(c.includes('invalid-email'))return 'Email sahi nahi hai.';
+  if(c.includes('too-many-requests'))return 'Bahut attempts hue, thodi der baad try karein.';
+  if(c.includes('network'))return 'Internet nahi hai / network error.';
+  if(c.includes('popup-closed')||c.includes('cancelled-popup'))return 'Google login band kar diya gaya.';
+  if(c.includes('unauthorized-domain'))return 'Ye website Firebase > Authentication > Settings > Authorized domains mein add karein.';
+  if(c.includes('operation-not-allowed'))return 'Firebase Console > Authentication > Sign-in method mein Google / Email-Password enable karein.';
+  return (e&&e.message)||'Error';
+}
+function fsMsg(e){
+  const c=(e&&e.code)||'';
+  if(c==='permission-denied')return 'Firestore permission denied. Firestore Rules check karein.';
+  if(c==='unavailable')return 'Internet nahi hai / server tak nahi pahunch pa rahe.';
+  return (e&&e.message)||'Error';
+}
+
+// ======================================================= Login
+function Login(){
+  const [email,setEmail]=useState(''),[pass,setPass]=useState('');
+  const [msg,setMsg]=useState(null),[busy,setBusy]=useState(false);
+  const say=(t,err)=>setMsg({t,err});
+
+  async function google(){
+    setBusy(true);say('Google se login ho raha hai...');
+    try{
+      await signInWithPopup(auth,new GoogleAuthProvider());
+    }catch(e){
+      const c=(e&&e.code)||'';
+      if(c.includes('popup-blocked')||c.includes('operation-not-supported')){
+        try{await signInWithRedirect(auth,new GoogleAuthProvider());return;}catch(e2){say(authMsg(e2),true)}
+      }else say(authMsg(e),true);
+    }
+    setBusy(false);
+  }
+  async function emailAuth(create){
+    if(!email.includes('@')){say('Sahi email likhein.',true);return;}
+    if(pass.length<6){say('Password kam se kam 6 characters ka rakhein.',true);return;}
+    setBusy(true);say(create?'Account ban raha hai...':'Sign in ho raha hai...');
+    try{
+      if(create)await createUserWithEmailAndPassword(auth,email.trim(),pass);
+      else await signInWithEmailAndPassword(auth,email.trim(),pass);
+    }catch(e){say(authMsg(e),true);setBusy(false);}
+  }
+  async function reset(){
+    if(!email.includes('@')){say('Pehle upar apna email likhein.',true);return;}
+    try{await sendPasswordResetEmail(auth,email.trim());say('Password reset ka link email par bhej diya (spam bhi dekhein).');}
+    catch(e){say(authMsg(e),true);}
+  }
+  return html`<div class="center">
+    <div style="text-align:center;font-size:54px">🐄</div>
+    <h1>Pashupalak Sathi</h1>
+    <div class="sub">Apni dairy ki passbook, mobile par</div>
+    <div class="card">
+      <button class="gbtn" disabled=${busy} onClick=${google}>
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.600 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+        Google se Login karein
+      </button>
+      <div class="or">— ya email se —</div>
+      <input type="email" placeholder="Email" value=${email} onInput=${e=>setEmail(e.target.value)} />
+      <input type="password" placeholder="Password (kam se kam 6 akshar)" value=${pass} onInput=${e=>setPass(e.target.value)} />
+      ${msg&&html`<div class=${'msg '+(msg.err?'err':'info')}>${msg.t}</div>`}
+      <button disabled=${busy} onClick=${()=>emailAuth(false)}>Sign In</button>
+      <button class="dark" disabled=${busy} onClick=${()=>emailAuth(true)}>Naya Account Banayein</button>
+      <div class="link" onClick=${reset}>Password bhool gaye?</div>
+    </div>
+  </div>`;
+}
+
+// ======================================================= Register
+function Register({user,profile,onDone,onLogout}){
+  const [name,setName]=useState((profile&&profile.name)||user.displayName||'');
+  const [phone,setPhone]=useState((profile&&profile.phone)||'');
+  const [code,setCode]=useState((profile&&profile.dairy_code)||'');
+  const [dairy,setDairy]=useState(null),[msg,setMsg]=useState(null),[busy,setBusy]=useState(false);
+  const say=(t,err)=>setMsg({t,err});
+
+  async function verify(){
+    const c=safeId(code.trim());
+    if(!c){say('Dairy Code likhein.',true);return;}
+    setBusy(true);setDairy(null);say('Dairy dhundh rahe hain...');
+    try{
+      const s=await getDoc(doc(db,'dairy_codes',c));
+      if(!s.exists()){say('Is code ki koi dairy nahi mili. Code dobara check karein.',true);}
+      else{
+        const d=s.data();
+        if(!d.dairy_id){say('Dairy ki jaankari adhuri hai. Owner se app update karne ko kahein.',true);}
+        else{setDairy({id:d.dairy_id,code:c,name:d.name||'',owner:d.owner||'',village:d.village||''});say('');}
+      }
+    }catch(e){say(fsMsg(e),true);}
+    setBusy(false);
+  }
+  async function confirm(){
+    const ph=phone.replace(/\D/g,'').slice(-10);
+    if(name.trim().length<2){say('Apna naam likhein.',true);return;}
+    if(ph.length!==10){say('10 digit ka mobile number likhein.',true);return;}
+    setBusy(true);say('Request bheji ja rahi hai...');
+    try{
+      const prof={name:name.trim(),phone:ph,email:user.email||'',dairy_id:dairy.id,dairy_code:dairy.code,dairy_name:dairy.name,owner:dairy.owner};
+      await setDoc(doc(db,'farmer_users',user.uid),prof);
+      await setDoc(doc(db,'dairies',dairy.id,'link_requests',user.uid),{
+        farmer_uid:user.uid,farmer_name:name.trim(),farmer_phone:ph,farmer_email:user.email||'',
+        status:'pending',farmer_code:'',requested_at:Math.floor(Date.now()/1000)});
+      LS.set('linked',false);
+      onDone(prof);
+    }catch(e){say(fsMsg(e),true);setBusy(false);}
+  }
+  return html`<div class="wrap" style="padding:28px 20px">
+    <div style="font-size:22px;font-weight:700">Aapki Jaankari</div>
+    <div class="sub" style="text-align:left">Apni dairy se judne ke liye Dairy Code daalein. Code dairy owner se milta hai.</div>
+    <div class="card">
+      <input placeholder="Aapka naam" value=${name} onInput=${e=>setName(e.target.value)} />
+      <input type="tel" placeholder="Mobile number (10 digit)" value=${phone} onInput=${e=>setPhone(e.target.value)} />
+      <input placeholder="Dairy Code" value=${code} onInput=${e=>setCode(e.target.value)} />
+      ${msg&&msg.t&&html`<div class=${'msg '+(msg.err?'err':'info')}>${msg.t}</div>`}
+      <button disabled=${busy} onClick=${verify}>Dairy Verify Karein</button>
+    </div>
+    ${dairy&&html`<div class="card sum">
+      <div>Dairy: <b>${dairy.name}</b></div><div>Owner: <b>${dairy.owner}</b></div>
+      ${dairy.village&&html`<div>Gaon: ${dairy.village}</div>`}
+      <button disabled=${busy} onClick=${confirm}>✔ Haan, yehi meri dairy hai — Request bhejein</button>
+    </div>`}
+    <div class="link" style="color:var(--red)" onClick=${onLogout}>Logout</div>
+  </div>`;
+}
+
+// ======================================================= Status (polls every 8 sec)
+function Status({user,profile,onLinked,onRedo,onLogout}){
+  const [st,setSt]=useState('checking'),[err,setErr]=useState('');
+  async function check(){
+    if(!navigator.onLine){setSt('offline');return;}
+    try{
+      const s=await getDoc(doc(db,'dairies',profile.dairy_id,'link_requests',user.uid));
+      if(!s.exists()){onRedo();return;}
+      const d=s.data();
+      if(d.status==='accepted'&&d.farmer_code){LS.set('linked',true);LS.set('code',d.farmer_code);onLinked(d.farmer_code);return;}
+      setErr('');setSt(d.status||'pending');
+    }catch(e){setErr(fsMsg(e));setSt('error');}
+  }
+  useEffect(()=>{check();const t=setInterval(check,8000);return()=>clearInterval(t);},[]);
+  const dl=html`<div class="small" style="margin-top:10px">Dairy: ${profile.dairy_name}<br/>Owner: ${profile.owner}</div>`;
+  const T={
+    checking:['⏳ Request check ho rahi hai...',''],
+    pending:['⏳ Owner ke Accept ka intezaar','Aapki request dairy owner ko bhej di gayi hai. Owner Accept karega to passbook apne aap khul jayegi (har 8 second mein check hota hai).'],
+    offline:['📴 Internet nahi hai','Net chalu hote hi status apne aap check hoga.'],
+    rejected:['❌ Request reject ho gayi','Dairy owner ne request reject ki. Code ya number sahi hai to owner se baat karke dobara request bhejein.'],
+    removed:['🔗 Link hata diya gaya','Dairy owner ne aapka link hata diya hai. Dobara judne ke liye request bhejein.'],
+    error:['⚠️ Problem',err]
+  };
+  const [title,body]=T[st]||T.pending;
+  return html`<div class="center"><div class="card">
+    <div style="font-size:19px;font-weight:700">${title}</div>
+    <div style="color:var(--grey);font-size:14px;margin-top:10px">${body}</div>${dl}
+    <button style="margin-top:14px" onClick=${check}>Abhi check karein</button>
+    ${(st==='rejected'||st==='removed')&&html`<button class="dark" onClick=${onRedo}>Dobara request bhejein</button>`}
+    <div class="link" style="color:var(--red)" onClick=${onLogout}>Logout</div>
+  </div></div>`;
+}
+
+// ======================================================= Passbook
+function Passbook({user,profile,farmerCode,onUnlinked,onLogout}){
+  const now=new Date();
+  const [tab,setTab]=useState(0),[year,setYear]=useState(now.getFullYear()),[month,setMonth]=useState(now.getMonth());
+  const [entries,setEntries]=useState(LS.get('entries')||[]);
+  const [rate,setRate]=useState(LS.get('rate'));
+  const [info,setInfo]=useState(''),[infoErr,setInfoErr]=useState(false),[loading,setLoading]=useState(false);
+  const lastSync=LS.get('lastSync');
+
+  async function refresh(){
+    if(!navigator.onLine){
+      setInfoErr(false);
+      setInfo(lastSync?'📴 Offline — pichla saved data ('+new Date(lastSync).toLocaleString()+')':'📴 Internet nahi hai. Data laane ke liye net chalu karein.');
+      return;
+    }
+    setLoading(true);setInfoErr(false);setInfo('Data update ho raha hai...');
+    try{
+      const q=query(collection(db,'dairies',profile.dairy_id,'collections'),where('code','==',farmerCode));
+      const snap=await getDocs(q);
+      const list=snap.docs.map(d=>{const x=d.data();return{d:x.date||'',s:x.shift||'',t:x.milk_type||'',l:+x.liters||0,f:+x.fat||0,n:+x.snf||0,r:+x.rate||0,a:+x.total_amount||0};});
+      list.sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:shiftOrd(a.s)-shiftOrd(b.s));
+      setEntries(list);LS.set('entries',list);
+      try{
+        const rs=await getDoc(doc(db,'dairies',profile.dairy_id,'rate_chart','default'));
+        if(rs.exists()){const r=rs.data();setRate(r);LS.set('rate',r);}
+      }catch(e){}
+      const t=Date.now();LS.set('lastSync',t);
+      setInfo('✓ Updated '+new Date(t).toLocaleString());
+    }catch(e){
+      if(e&&e.code==='permission-denied'){
+        try{
+          const s=await getDoc(doc(db,'dairies',profile.dairy_id,'link_requests',user.uid));
+          if(!s.exists()||s.data().status!=='accepted'){LS.set('linked',false);onUnlinked();return;}
+        }catch(e2){}
+        setInfoErr(true);setInfo('Firestore permission denied. Owner ne Accept kiya hai, phir bhi data nahi dikh raha: Firestore Rules Publish hue ya nahi check karein.');
+      }else{setInfoErr(true);setInfo(fsMsg(e));}
+    }
+    setLoading(false);
+  }
+  useEffect(()=>{refresh();},[]);
+
+  function nav(d){let m=month+d,y=year;if(m<0){m=11;y--;}if(m>11){m=0;y++;}setMonth(m);setYear(y);}
+
+  return html`<div class="wrap">
+    <div class="head">
+      <div class="t"><b>${profile.dairy_name||'Pashupalak Sathi'}</b><small>${profile.name} • Code: ${farmerCode}</small></div>
+      <button disabled=${loading} onClick=${refresh}>⟳</button>
+      <button style="font-size:12px" onClick=${()=>{if(confirm('Logout karein? Is phone se saved data hat jayega.'))onLogout();}}>Logout</button>
+    </div>
+    <div class="tabs">
+      <button class=${tab===0?'on':''} onClick=${()=>setTab(0)}>Passbook</button>
+      <button class=${tab===1?'on':''} onClick=${()=>setTab(1)}>Rate Chart</button>
+    </div>
+    <div class=${'small '+(infoErr?'err':'')} style="padding:4px 16px">${info}</div>
+    <div class="body">
+      ${tab===0?html`<${Month} entries=${entries} year=${year} month=${month} nav=${nav} hasSynced=${!!lastSync}/>`:html`<${RateTab} rate=${rate}/>`}
+    </div>
+  </div>`;
+}
+
+function Month({entries,year,month,nav,hasSynced}){
+  const key=year+'-'+String(month+1).padStart(2,'0');
+  const list=entries.filter(e=>e.d.startsWith(key));
+  let totL=0,totA=0,fL=0,sL=0,mL=0,eL=0,mN=0,eN=0;
+  list.forEach(e=>{totL+=e.l;totA+=e.a;fL+=e.f*e.l;sL+=e.n*e.l;if(shiftOrd(e.s)===0){mL+=e.l;mN++;}else{eL+=e.l;eN++;}});
+  const days=[];
+  list.forEach(e=>{const last=days[days.length-1];if(last&&last.d===e.d)last.rows.push(e);else days.push({d:e.d,rows:[e]});});
+  const pretty=d=>{const p=d.split('-');return p.length===3?p[2]+' '+MONTHS[+p[1]-1]+' '+p[0]:d;};
+  return html`<div>
+    <div class="nav"><button onClick=${()=>nav(-1)}>◀</button><div>${MONTHS[month]} ${year}</div><button onClick=${()=>nav(1)}>▶</button></div>
+    ${list.length===0?html`<div class="card small">${!entries.length&&!hasSynced?'Data load ho raha hai ya abhi dairy ne koi entry nahi daali.':'Is mahine koi entry nahi hai.'}</div>`:html`<div>
+      <div class="card sum">
+        <div class="small">Is mahine ka hisaab</div>
+        <div class="big">₹ ${f2(totA)}</div>
+        <div>${f2(totL)} L doodh • ${list.length} entry</div>
+        <div class="small" style="margin-top:6px">Avg FAT ${f1(totL?fL/totL:0)} • Avg SNF ${f1(totL?sL/totL:0)} • Avg ₹${f2(totL?totA/totL:0)}/L<br/>🌅 Subah: ${f2(mL)} L (${mN}) 🌇 Shaam: ${f2(eL)} L (${eN})</div>
+      </div>
+      ${days.map(g=>html`<div class="card" key=${g.d}>
+        <div class="row"><b>${pretty(g.d)}</b><span class="small">${f2(g.rows.reduce((a,x)=>a+x.l,0))} L • ₹${f2(g.rows.reduce((a,x)=>a+x.a,0))}</span></div>
+        ${g.rows.map((e,i)=>html`<div class="ent" key=${i}>
+          <div class="row"><span>${shiftOrd(e.s)===0?'🌅 Subah':'🌇 Shaam'}${e.t?' • '+e.t:''}</span><span class="amt">₹${f2(e.a)}</span></div>
+          <div class="small">${f2(e.l)} L • FAT ${f1(e.f)} • SNF ${f1(e.n)} • ₹${f2(e.r)}/L</div>
+        </div>`)}
+      </div>`)}
+    </div>`}
+  </div>`;
+}
+
+function RateTab({rate}){
+  if(!rate)return html`<div class="card small">Dairy ne abhi rate chart publish nahi kiya hai.<br/>Net chalu karke ⟳ dabayein.</div>`;
+  const r={base_rate:+rate.base_rate||0,base_fat:+rate.base_fat||3.5,base_snf:+rate.base_snf||8.5,
+    fat_deduct:+rate.fat_deduct||0,snf_deduct:+rate.snf_deduct||0,low_fat:+rate.low_fat||0,low_snf:+rate.low_snf||0,
+    high_fat:+rate.high_fat||0,high_snf:+rate.high_snf||0};
+  let mnf=+rate.min_fat,mxf=+rate.max_fat,mns=+rate.min_snf,mxs=+rate.max_snf;
+  if(!(mxf>mnf)){mnf=3.0;mxf=6.0;} if(!(mxs>mns)){mns=8.0;mxs=10.0;}
+  const p=v=>Math.round(v*100);
+  const fats=[],snfs=[];
+  for(let f=Math.round(mnf*10);f<=Math.round(mxf*10);f++)fats.push(f);
+  for(let s=Math.round(mns*10);s<=Math.round(mxs*10);s++)snfs.push(s);
+  return html`<div>
+    <div class="card">
+      <div class="small">Base Rate</div><div class="big">₹${f2(r.base_rate)} / L</div>
+      <div class="small" style="margin-top:6px">Base FAT ${f1(r.base_fat)} • Base SNF ${f1(r.base_snf)}<br/>
+      FAT ${f1(mnf)}–${f1(mxf)} • SNF ${f1(mns)}–${f1(mxs)}<br/>
+      Base band (har 0.1 par): FAT −${p(r.fat_deduct)} paise, SNF −${p(r.snf_deduct)} paise<br/>
+      Low band: FAT −${p(r.low_fat)} paise, SNF −${p(r.low_snf)} paise<br/>
+      High band: FAT +${p(r.high_fat)} paise, SNF +${p(r.high_snf)} paise</div>
+    </div>
+    <div style="font-weight:700;margin:4px 0">Rate Matrix (₹ per litre)</div>
+    <div class="small" style="margin-bottom:6px">Upar SNF, side mein FAT. Left-right scroll karein.</div>
+    <div class="scroll"><table>
+      <thead><tr><th>FAT\\SNF</th>${snfs.map(s=>html`<th key=${s}>${f1(s/10)}</th>`)}</tr></thead>
+      <tbody>${fats.map(f=>html`<tr key=${f}><td class="h">${f1(f/10)}</td>${snfs.map(s=>html`<td key=${s}>${f2(calcRate(r,f/10,s/10))}</td>`)}</tr>`)}</tbody>
+    </table></div>
+  </div>`;
+}
+
+// ======================================================= Root
+function App(){
+  const [user,setUser]=useState(undefined);     // undefined = loading
+  const [profile,setProfile]=useState(null);
+  const [screen,setScreen]=useState('loading'); // loading | login | register | status | passbook
+  const [code,setCode]=useState('');
+  const [err,setErr]=useState('');
+
+  async function route(u){
+    if(!u){setScreen('login');return;}
+    setScreen('loading');
+    // offline + already linked -> open passbook from cache
+    const cp=LS.get('profile');
+    if(!navigator.onLine&&cp&&LS.get('linked')&&LS.get('code')){setProfile(cp);setCode(LS.get('code'));setScreen('passbook');return;}
+    try{
+      const s=await getDoc(doc(db,'farmer_users',u.uid));
+      if(!s.exists()){setProfile(null);setScreen('register');return;}
+      const p=s.data();setProfile(p);LS.set('profile',p);
+      if(LS.get('linked')&&LS.get('code')){setCode(LS.get('code'));setScreen('passbook');return;}
+      setScreen('status');
+    }catch(e){
+      if(cp&&LS.get('linked')&&LS.get('code')){setProfile(cp);setCode(LS.get('code'));setScreen('passbook');return;}
+      setErr(fsMsg(e));setScreen('error');
+    }
+  }
+  useEffect(()=>{
+    getRedirectResult(auth).catch(()=>{});
+    return onAuthStateChanged(auth,u=>{
+      if(u&&LS.get('uid')&&LS.get('uid')!==u.uid)LS.clear(); // different account on same phone
+      if(u)LS.set('uid',u.uid);
+      setUser(u||null);route(u);
+    });
+  },[]);
+
+  async function logout(){LS.clear();await signOut(auth);setProfile(null);}
+
+  if(screen==='loading')return html`<div class="center" style="text-align:center;color:var(--grey)">Load ho raha hai...</div>`;
+  if(screen==='error')return html`<div class="center"><div class="card"><div class="err">${err}</div>
+    <button onClick=${()=>route(user)}>Dobara try karein</button><div class="link" onClick=${logout}>Logout</div></div></div>`;
+  if(screen==='login'||!user)return html`<${Login}/>`;
+  if(screen==='register')return html`<div class="wrap"><${Register} user=${user} profile=${profile} onLogout=${logout}
+      onDone=${p=>{setProfile(p);LS.set('profile',p);setScreen('status');}}/></div>`;
+  if(screen==='status')return html`<div class="wrap"><${Status} user=${user} profile=${profile} onLogout=${logout}
+      onRedo=${()=>setScreen('register')} onLinked=${c=>{setCode(c);setScreen('passbook');}}/></div>`;
+  return html`<${Passbook} user=${user} profile=${profile} farmerCode=${code} onLogout=${logout}
+      onUnlinked=${()=>{LS.set('linked',false);setScreen('status');}}/>`;
+}
+
+createRoot(document.getElementById('root')).render(html`<${App}/>`);
+</script>
+</body>
+</html>
